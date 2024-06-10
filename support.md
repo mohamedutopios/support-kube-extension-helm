@@ -972,14 +972,55 @@ Kubebuilder fournit des outils pour écrire des tests unitaires et des tests d'i
 ##  Admission Controller
 ### Fonctionnement des Admission Controllers
 
+Il existe plusieurs types principaux d'Admission Controllers :
+<div style="font-size:18px">
+
+1. **NamespaceLifecycle** : Gère la création et la suppression des namespaces, en empêchant la création de ressources dans des namespaces en cours de suppression.
+
+2. **ResourceQuota** : Assure que les namespaces ne dépassent pas les quotas de ressources alloués (CPU, mémoire, etc.).
+
+3. **LimitRanger** : Applique des limites et des demandes par défaut pour les ressources si elles ne sont pas spécifiées par l'utilisateur.
+
+4. **ServiceAccount** : Assure que les pods ont un compte de service associé, permettant ainsi une gestion fine des permissions et de la sécurité.
+
+5. **PodSecurityPolicy** : Gère la politique de sécurité des pods, contrôlant ce qu'un pod peut et ne peut pas faire, par exemple, l'utilisation de volumes hostPath ou de privilèges escaladés.
+
+6. **NodeRestriction** : Restreint les modifications que les kubelets (agents de nœuds) peuvent apporter aux ressources des nœuds et des pods.
+
+</div>
+
+---
+
+##  Admission Controller
+### Fonctionnement des Admission Controllers (dynamiques)
+
 <br>
 
-Il existe deux types principaux d'Admission Controllers :
+Il existe plusieurs types principaux d'Admission Controllers :
+<div style="font-size:21px">
 
 1. **Mutating Admission Controllers** : Ils peuvent modifier les objets avant qu'ils ne soient persistés.
 2. **Validating Admission Controllers** : Ils valident les objets et peuvent rejeter les requêtes non conformes.
+3. **Webhook Admission Controller** : Utilise des webhooks pour déléguer la logique de mutation ou de validation à des services externes. Ceci permet de centraliser la logique d'admission dans des services indépendants.
+4. **Initializers** : Un type d'admission controller qui permet d'ajouter des initialisateurs à des objets avant leur création complète. Les initializers sont progressivement dépréciés au profit des webhooks mutating.
 
+</div>
 
+---
+
+##  Admission Controller
+### Fonctionnement général
+
+<div style="font-size:25px">
+
+1. **Intercept Request** : Les contrôleurs d'admission interceptent les requêtes qui arrivent au serveur d'API avant qu'elles ne soient persistées dans etcd (la base de données clé-valeur de Kubernetes).
+
+2. **Evaluate Request** : Ils évaluent la requête en fonction des règles et politiques définies. Cela peut inclure la vérification des quotas, la validation de la sécurité, et l'application de valeurs par défaut.
+
+3. **Modify or Reject Request** : En fonction de l'évaluation, le contrôleur peut modifier la requête (mutation) ou la rejeter (validation).
+
+4. **Pass to Next Stage** : Si la requête est acceptée, elle est passée aux étapes suivantes pour le traitement par le serveur d'API et, éventuellement, persistée dans etcd.
+</div>
 
 ---
 
@@ -990,8 +1031,6 @@ Il existe deux types principaux d'Admission Controllers :
 
 - Les **Mutating Admission Controllers** sont responsables de la modification des objets envoyés au serveur API avant qu'ils ne soient persistés dans etcd. 
 - Ces contrôleurs peuvent ajouter, modifier ou supprimer des champs dans les objets.
-
-
 
 ---
 
@@ -1010,14 +1049,10 @@ Il existe deux types principaux d'Admission Controllers :
 
 </div>
 
-
-
 ---
 
 ##  Admission Controller
 ### Exemple : Mutating Admission Controllers
-
-
 
 <div class="columns">
 
@@ -1053,7 +1088,167 @@ webhooks:
     sideEffects: None
 ```
 
+</div>
 
+---
+
+##  Admission Controller
+### Validation Admission Controllers
+
+#### Fonctionnalités et Utilisations :
+
+<br>
+
+<div style="font-size:28px">
+
+- **Contrôle de conformité** : Ils s'assurent que les objets créés respectent les politiques de sécurité et les contraintes de l'organisation.
+- **Validation des champs** : Ils vérifient que les champs des objets contiennent des valeurs valides et appropriées.
+- **Enforcement des politiques** : Ils peuvent imposer des règles spécifiques, comme l'utilisation de certaines images de conteneurs ou des configurations réseau.
 
 </div>
 
+---
+
+##  Admission Controller
+### Exemple : Mutating Admission Controllers
+
+<div class="columns">
+
+<div style="font-size:28px">
+
+<br>
+
+Un exemple de Validating Admission Controller est la vérification des spécifications de déploiement pour s'assurer qu'elles respectent les politiques de l'organisation.
+
+</div>
+
+<div style="font-size:22px">
+
+```yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: example-validating-webhook
+webhooks:
+  - name: example.validating.webhook.com
+    clientConfig:
+      service:
+        name: example-service
+        namespace: default
+        path: "/validate"
+      caBundle: <base64-encoded-ca-cert>
+    rules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+    admissionReviewVersions: ["v1", "v1beta1"]
+    sideEffects: None
+```
+
+</div>
+
+---
+
+##  Admission Controller Courant
+#### Exemple Admission Controller : PodSecurityPolicy
+
+<div class="columns">
+
+<div style="font-size:28px">
+
+<br>
+
+Un exemple de Validating Admission Controller est la vérification des spécifications de déploiement pour s'assurer qu'elles respectent les politiques de l'organisation.
+
+</div>
+
+<div style="font-size:19px">
+
+```yaml
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: example-psp
+spec:
+  privileged: false  # Ne pas permettre des pods privilégiés
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  volumes:
+    - 'emptyDir'
+  hostNetwork: false
+  hostPorts:
+    - min: 0
+      max: 65535
+  seLinux:
+    rule: RunAsAny
+  runAsUser:
+    rule: MustRunAsNonRoot
+  supplementalGroups:
+    rule: RunAsAny
+  fsGroup:
+    rule: RunAsAny
+```
+</div>
+
+
+---
+
+
+
+<!-- _class: lead -->
+<!-- _paginate: false -->
+
+## API Aggregation
+
+---
+
+##  API Aggregation
+
+### Definition
+
+<div style="font-size:30px">
+
+<br>
+
+- **L'Aggregation Layer** est une méthode permettant d'étendre l'API Kubernetes en ajoutant des API servers supplémentaires pour fournir des fonctionnalités supplémentaires ou des API personnalisées sans modifier le code de l'API server principal de Kubernetes. 
+- Ces **API servers** supplémentaires sont appelés des "aggregated API servers" et sont intégrés au cluster via un proxy intégré dans le kube-apiserver.
+
+</div>
+
+
+
+---
+
+##  API Aggregation
+
+### Avantages de l'Aggregation Layer
+
+<div style="font-size:30px">
+
+<br>
+
+1. **Extensibilité :** Permet l'ajout de nouvelles fonctionnalités ou d'API personnalisées sans modifier le kube-apiserver principal.
+2. **Modularité :** Les nouvelles fonctionnalités peuvent être développées, testées et déployées indépendamment du cycle de vie du kube-apiserver principal.
+3. **Isolation :** Les aggregated API servers peuvent fonctionner indépendamment, limitant les impacts potentiels sur l'API server principal en cas de problème.
+
+</div>
+
+---
+
+##  API Aggregation
+
+### Fonctionnement de l'Aggregation Layer
+
+<div style="font-size:30px">
+
+<br>
+
+1. **Deployment des Aggregated API Servers :** Ces API servers sont déployés comme des pods normaux dans le cluster Kubernetes.
+2. **Enregistrement des API :** Les aggregated API servers enregistrent leurs API auprès du kube-apiserver en utilisant des ressources APIService.
+3. **Proxying des Requêtes :** Le kube-apiserver agit comme un proxy pour les requêtes destinées aux aggregated API servers. Lorsqu'une requête pour une API étendue arrive, le kube-apiserver la redirige vers l'API server approprié.
+
+</div>
+
+---
